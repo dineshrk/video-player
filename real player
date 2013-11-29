@@ -1,0 +1,477 @@
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using Windows.Foundation;
+using Windows.Graphics.Display;
+using Windows.System;
+using Windows.UI.ViewManagement;
+using Windows.UI.Xaml;
+using Windows.UI.Xaml.Controls;
+using Windows.UI.Xaml.Data;
+using Windows.UI.Xaml.Media;
+using Windows.UI.Xaml.Documents;
+using Windows.UI.Xaml.Navigation;
+using Windows.Storage.Pickers;
+using Windows.Storage;
+using Windows.UI;
+using System.Collections.ObjectModel;
+using Windows.UI.Xaml.Input;
+using Windows.Media;
+using Playlist;
+namespace media_player
+{
+    /// <summary>
+    /// An empty page that can be used on its own or navigated to within a Frame.
+    /// </summary>
+
+    public sealed partial class MainPage : Page
+    {
+        private DispatcherTimer _timer;
+        private bool _sliderpressed = false;
+    
+        public ObservableCollection<BindableStorageFile> MediaPlayList { set; get; }
+        DispatcherTimer dispatcherTimer = new DispatcherTimer();
+        public MainPage()
+        {
+            this.InitializeComponent();
+            MediaPlayList = new ObservableCollection<BindableStorageFile>();
+        }
+
+        /// <summary>
+        /// Invoked when this page is about to be displayed in a Frame.
+        /// </summary>
+        /// <param name="e">Event data that describes how this page was reached.  The Parameter
+        /// property is typically used to configure the page.</param>
+        protected override void OnNavigatedTo(NavigationEventArgs e)
+        {
+        }
+    
+
+
+        private void Button_Click_1(object sender, RoutedEventArgs e)
+        {
+            if (media.DefaultPlaybackRate == 0)
+            {
+                media.DefaultPlaybackRate = 1.0;
+                media.PlaybackRate = 1.0;
+            }
+
+            SetupTimer();
+
+
+            media.Play();
+        }
+        
+        async Task PickFileAsync(bool multiplieFiles)
+        {
+
+            FileOpenPicker fileopenpicker = new FileOpenPicker();
+            fileopenpicker.FileTypeFilter.Add(".avi");
+            fileopenpicker.FileTypeFilter.Add(".mkv");
+            fileopenpicker.FileTypeFilter.Add(".wmv");
+            fileopenpicker.FileTypeFilter.Add(".mp4");
+            fileopenpicker.FileTypeFilter.Add(".mp3");
+            fileopenpicker.FileTypeFilter.Add(".flv");
+            
+            
+            fileopenpicker.SuggestedStartLocation = PickerLocationId.VideosLibrary;// | PickerLocationId.DocumentsLibrary | PickerLocationId.PicturesLibrary | PickerLocationId.MusicLibrary;
+
+            if (multiplieFiles)
+            {
+                var files = await fileopenpicker.PickMultipleFilesAsync();
+
+                if (MediaPlayList.Count > 0)
+                {
+                    MediaPlayList.Clear();
+                }
+
+                foreach (StorageFile file in files)
+                {
+                    MediaPlayList.Add(new BindableStorageFile { Name = file.Name, File = file });
+                }
+            }
+            else
+            {
+                var singlefileoperation = await fileopenpicker.PickSingleFileAsync();
+                if (singlefileoperation != null)
+                {
+                    await SetmediaSourceAsync(singlefileoperation);
+                }
+            }
+        }
+
+        async Task SetmediaSourceAsync(StorageFile file)
+        {
+            var stream = await file.OpenAsync(Windows.Storage.FileAccessMode.Read);
+            MediaControl.TrackName = file.DisplayName;
+            media.SetSource(stream, file.ContentType);
+        }
+        
+
+        async void Button_Click_2(object sender, RoutedEventArgs e)
+        {
+            if (!ApplicationView.TryUnsnap())
+            {
+                VisualStateManager.GoToState(this, string.Format("Filled{0}", DisplayProperties.ResolutionScale), true);
+            }
+
+            await PickFileAsync(false); 
+
+        }
+       
+        private void Button_Click_3(object sender, RoutedEventArgs e)
+        {
+            media.Pause();
+        }
+
+        private void Button_Click_4(object sender, RoutedEventArgs e)
+        {
+            media.Stop();
+        }
+
+        private void Button_Click_5(object sender, RoutedEventArgs e)
+        {
+            media.IsMuted = !media.IsMuted;
+
+        }
+
+        private void Button_Click_6(object sender, RoutedEventArgs e)
+        {
+            media.DefaultPlaybackRate = 0.0;
+            media.PlaybackRate = 2.0;
+
+
+        }
+
+        private void Button_Click_7(object sender, RoutedEventArgs e)
+        {
+            media.DefaultPlaybackRate = 0.0;
+            media.PlaybackRate = -1.0;
+
+        }
+
+        private void media_MediaFailed(object sender, ExceptionRoutedEventArgs e)
+        {
+
+        }
+
+        private void media_VolumeChanged(object sender, RoutedEventArgs e)
+        {
+
+        }
+
+        private void media_MediaOpened(object sender, RoutedEventArgs e)
+        {
+            MediaDuration.Text = media.NaturalDuration.ToString().Substring(0, 8);
+            dispatcherTimer.Tick += dispatcherTimer_Tick;
+            dispatcherTimer.Start();
+
+            double absvalue = (int)Math.Round(media.NaturalDuration.TimeSpan.TotalSeconds, MidpointRounding.AwayFromZero);
+            slider.Maximum = absvalue;
+
+            slider.StepFrequency = sliderFrequency(media.NaturalDuration.TimeSpan);
+
+            SetupTimer();
+        }
+        private void dispatcherTimer_Tick(object sender, object e)
+        {
+            MediaCurrentPosition.Text = media.Position.Hours
+                                        + ":" + media.Position.Minutes
+                                        + ":" + media.Position.Seconds;
+        }
+        private void SetupTimer()
+        {
+            _timer = new DispatcherTimer();
+            _timer.Interval = TimeSpan.FromSeconds(slider.StepFrequency);
+            StartTimer();
+        }
+
+        private void _timer_Tick(object sender, object e)
+        {
+            if (!_sliderpressed)
+            {
+                slider.Value = media.Position.TotalSeconds;
+            }
+        }
+
+        private void StartTimer()
+        {
+            _timer.Tick += _timer_Tick;
+            _timer.Start();
+        }
+
+        private void StopTimer()
+        {
+            _timer.Stop();
+            _timer.Tick -= _timer_Tick;
+        }
+
+        private double sliderFrequency(TimeSpan timevalue)
+        {
+            double stepfrequency = -1;
+
+            double absvalue = (int)Math.Round(timevalue.TotalSeconds, MidpointRounding.AwayFromZero);
+            stepfrequency = (int)(Math.Round(absvalue / 100));
+
+            if (timevalue.TotalMinutes >= 10 && timevalue.TotalMinutes < 30)
+            {
+                stepfrequency = 10;
+            }
+            else if (timevalue.TotalMinutes >= 30 && timevalue.TotalMinutes < 60)
+            {
+                stepfrequency = 30;
+            }
+            else if (timevalue.TotalHours >= 1)
+            {
+                stepfrequency = 60;
+            }
+
+            if (stepfrequency == 0) stepfrequency += 1;
+
+            if (stepfrequency == 1)
+            {
+                stepfrequency = absvalue / 100;
+            }
+
+            return stepfrequency;
+        }
+
+        void slider_PointerEntered(object sender, PointerRoutedEventArgs e)
+        {
+            System.Diagnostics.Debug.WriteLine("Pointer entered event fired");
+            _sliderpressed = true;
+        }
+
+        void slider_PointerCaptureLost(object sender, PointerRoutedEventArgs e)
+        {
+            System.Diagnostics.Debug.WriteLine("Pointer capture lost event fired");
+            System.Diagnostics.Debug.WriteLine("Slider value at capture lost {0}", slider.Value);
+            //myMediaElement.PlaybackRate = 1;
+            media.Position = TimeSpan.FromSeconds(slider.Value);
+            _sliderpressed = false;
+        }
+
+
+        void slider_ValueChanged(object sender, Windows.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
+        {
+            System.Diagnostics.Debug.WriteLine("Slider old value = {0} new value = {1}.", e.OldValue, e.NewValue);
+            if (!_sliderpressed)
+            {
+                media.Position = TimeSpan.FromSeconds(e.NewValue);
+            }
+        }
+       
+        async Task SetMediaElementSourceAsync(StorageFile file)
+        {
+            var stream = await file.OpenAsync(Windows.Storage.FileAccessMode.Read);
+            MediaControl.TrackName = file.DisplayName;
+            media.SetSource(stream, file.ContentType);
+        }
+
+        async void OpenFileButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (!ApplicationView.TryUnsnap())
+            {
+                VisualStateManager.GoToState(this, string.Format("Filled{0}", DisplayProperties.ResolutionScale), true);
+            }
+
+            await PickFileAsync(false);
+        }
+
+        async void Button_Click_8(object sender, RoutedEventArgs e)
+        {
+            if (!ApplicationView.TryUnsnap())
+            {
+                VisualStateManager.GoToState(this, "FullScreenLandscape", true);
+            }
+
+            media.Stop();
+
+            await PickFileAsync(true);
+
+            if (MediaPlayList.Count > 0)
+            {
+                myPlaylist.ItemsSource = MediaPlayList;
+                myPlaylist.SelectedIndex = 0;
+            }
+        }
+    
+        async private void ListBox_SelectionChanged_1(object sender, SelectionChangedEventArgs e)
+        {
+
+            try
+            {
+                StorageFile selectedFile = (myPlaylist.SelectedItem as BindableStorageFile).File;
+                await SetmediaSourceAsync(selectedFile);
+            }
+            catch (Exception)
+            {
+            }
+        }
+
+        private void Button_Click_9(object sender, RoutedEventArgs e)
+        {
+
+        }
+
+        private void media_MediaEnded(object sender, RoutedEventArgs e)
+        {
+            if (myPlaylist.SelectedIndex == myPlaylist.Items.Count - 1)
+            {
+                return;
+            }
+            else
+            {
+                if (myPlaylist.SelectedIndex + 1 < myPlaylist.Items.Count)
+                {
+                    myPlaylist.SelectedIndex++;
+                }
+            }
+        }
+
+        async void myPlaylist_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            try
+            {
+                StorageFile selectedFile = (myPlaylist.SelectedItem as BindableStorageFile).File;
+                await SetMediaElementSourceAsync(selectedFile);
+            }
+            catch (Exception)
+            {
+            }
+
+        }
+
+        private void Button_Click_10(object sender, RoutedEventArgs e)
+        {
+
+            slider.Value = slider.Value + 4;
+          
+
+           media.Play();
+
+           
+
+           
+        }
+
+        private void Button_Click_11(object sender, RoutedEventArgs e)
+        {
+
+            slider.Value = slider.Value - 4;
+
+            media.Play();
+
+
+        }
+
+        private void Button_Click_12(object sender, RoutedEventArgs e)
+        {
+            media.Width = newmedia.Width;
+            media.Height = newmedia.Height;
+
+            media.Width = Window.Current.Bounds.Width;
+            media.Height = Window.Current.Bounds.Height;
+        }
+
+        private bool _isFullscreenToggle = false;
+        public bool IsFullscreen
+        {
+            get { return _isFullscreenToggle; }
+            set { _isFullscreenToggle = value; }
+        }
+
+        private Size _previousVideoContainerSize = new Size();
+
+        private void FullscreenToggle()
+        {
+            this.IsFullscreen = !this.IsFullscreen;
+
+            if (this.IsFullscreen)
+            {
+
+              _previousVideoContainerSize.Width = newmedia.ActualWidth;
+                _previousVideoContainerSize.Height = newmedia.ActualHeight;
+
+                newmedia.Width = Window.Current.Bounds.Width;
+                newmedia.Height = Window.Current.Bounds.Height;
+                media.Width = Window.Current.Bounds.Width;
+                media.Height = Window.Current.Bounds.Height;
+            }
+            else
+            {
+
+
+                newmedia.Width = _previousVideoContainerSize.Width;
+                newmedia.Height = _previousVideoContainerSize.Height;
+                media.Width = _previousVideoContainerSize.Width;
+                media.Height = _previousVideoContainerSize.Height;
+            }
+        }
+
+        private void videoContainer_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
+        {
+            FullscreenToggle();
+
+        }
+
+        private void VideoContainer_KeyUp(object sender, KeyRoutedEventArgs e)
+        {
+            if (IsFullscreen && e.Key == Windows.System.VirtualKey.Escape)
+            {
+                FullscreenToggle();
+            }
+
+            e.Handled = true;
+        }
+
+
+        private void Button_Click_13(object sender, RoutedEventArgs e)
+        {
+            if(!IsFullscreen)
+            {
+                myPlaylist.Visibility = Visibility.Collapsed;
+            FullscreenToggle();
+            }
+            else
+            {
+                myPlaylist.Visibility = Visibility.Visible;
+                FullscreenToggle();
+            }
+        }
+
+        private void Slider_ValueChanged_1(object sender, Windows.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
+        {
+            try
+            {
+                media.Volume = (volumeslider.Value) / 100;
+            }
+            catch (Exception ex1)
+            {
+            }
+        }
+
+        private void BottomAppBar1_Loaded(object sender, RoutedEventArgs e)
+        {
+            RegisterAppBarButtons(); 
+        }
+        private void RegisterAppBarButtons()
+        {
+            Grid foo = BottomAppBar.Content as Grid;
+            foreach (UIElement e in foo.Children)
+            {
+                foreach (UIElement c in ((StackPanel)e).Children)
+                {
+                    if (c.GetType() == typeof(Button))
+                    {
+                        //      base.StartLayoutUpdates(c, new RoutedEventArgs());
+                    }
+                }
+            }
+        }
+
+        
+    }
+}
